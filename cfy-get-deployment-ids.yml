@@ -1,0 +1,22 @@
+---
+# This playbook will list the available deployments 
+# The first deployment should be your main deployment (the aws and terraform deployments are component deployments)
+- name: Get the list of deployments and load it into a fact called id_list
+  hosts: localhost
+  tasks:
+    - name: get deployment list from Cloudify
+      uri:
+        url: https://10.255.66.77/api/v3/deployments?_include=id
+        method: GET
+        body_format: json
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true  
+      register: result
+
+    - set_fact:
+        id_list: "{{ (result.json['items'] | map(attribute='id')) }}"
+    - debug: msg="{{ id_list }}"
