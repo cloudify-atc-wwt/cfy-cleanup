@@ -1,0 +1,210 @@
+---
+# This playbook will list the available deployments and then attempt to uninstall and delete the deployment.
+# Cloudify deployments must be uninstalled before they're deleted
+# This playbook assunmes that there is only one instance of the nginx-eaas service deployed
+- name: Tasks to uninstall deployments
+  hosts: localhost
+
+# Define a list of the sub-deployments which this playbook must not try to remove
+  vars:
+    strike_list:
+        terraform-repository-0
+        aws-nginx-prod-0
+        aws-nginx-prod-1
+        aws-nginx-prod-2
+  tasks:
+
+# Uninstall and delete deployments from Cloudify  
+    - name: get deployment list from Cloudify
+      uri:
+        url: https://10.255.66.77/api/v3/deployments?_include=id
+        method: GET
+        body_format: json
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true  
+      register: result
+
+    - set_fact:
+        id_list: "{{ (result.json['items'] | map(attribute='id')) }}"
+    - debug: msg="{{ id_list }}"      
+
+    - set_fact:
+        dep_list: "{{ id_list | difference(strike_list) }}"
+
+    - debug: var=dep_list
+
+    - name: uninstall deployment
+      uri:
+        url: https://10.255.66.77/api/v3/executions?_include=id
+        method: POST
+        body_format: json
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true
+        body: {"deployment_id":"{{ item }}", "workflow_id":"uninstall"}
+        status_code: 201
+      ignore_errors: yes
+      with_items: "{{ dep_list }}"
+
+    - name: wait for uninstall to finish
+      wait_for:
+        timeout: 300             
+
+    - name: delete deployment
+      uri:
+        url: https://10.255.66.77/api/v3/deployments/{{ item }}?_include=id
+        method: DELETE
+        body_format: json
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true
+        status_code: 204
+      ignore_errors: yes
+      with_items: "{{ dep_list }}"
+
+# Delete any blueprints on Cloudify
+    - name: Get blueprint list
+      uri:
+        url: https://10.255.66.77/api/v3/blueprints?_include=id
+        method: GET
+        body_format: json
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true  
+      register: result
+
+    - name: delete blueprints
+      uri:
+        url: https://10.255.66.77/api/v3/blueprints/{{ item }}
+        method: DELETE
+        body_format: json
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true
+        status_code: 500
+      ignore_errors: yes
+      with_items: "{{ (result.json['items'] | map(attribute='id')) }}"      
+
+# Upload all the baseline blueprints from GitHub
+    - name: upload the gcp-nginx blueprint
+      uri: 
+        url: https://10.255.66.77/api/v3/blueprints/gcp-nginx?application_file_name=gcp-nginx.yaml&blueprint_archive_url=https://github.com/cloudify-atc-wwt/gcp-nginx/archive/refs/heads/main.zip
+        method: PUT
+        body_format: raw
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true
+        status_code: 201
+      ignore_errors: yes   
+
+    - name: upload the aws-nginx blueprint
+      uri: 
+        url: https://10.255.66.77/api/v3/blueprints/aws-nginx?application_file_name=aws-nginx.yaml&blueprint_archive_url=https://github.com/cloudify-atc-wwt/aws-nginx/archive/refs/heads/main.zip
+        method: PUT
+        body_format: raw
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true
+        status_code: 201     
+      ignore_errors: yes                     
+
+    - name: upload the terraform-repository blueprint
+      uri: 
+        url: https://10.255.66.77/api/v3/blueprints/terraform-repository?application_file_name=blueprint.yaml&blueprint_archive_url=https://github.com/cloudify-atc-wwt/terraform-repository/archive/refs/heads/main.zip
+        method: PUT
+        body_format: raw
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true
+        status_code: 201
+      ignore_errors: yes
+
+    - name: upload the nginx-eaas blueprint
+      uri: 
+        url: https://10.255.66.77/api/v3/blueprints/nginx-eaas?application_file_name=eaas.yaml&blueprint_archive_url=https://github.com/cloudify-atc-wwt/nginx-eaas/archive/refs/heads/main.zip
+        method: PUT
+        body_format: raw
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true
+        status_code: 201   
+      ignore_errors: yes          
+
+    - name: upload the OpenStack-Basic-VM blueprint
+      uri: 
+        url: https://10.255.66.77/api/v3/blueprints/OpenStack-Basics-VM-Setup?application_file_name=openstack.yaml&blueprint_archive_url=https://github.com/cloudify-atc-wwt/OpenStack-Basics-VM-Setup/archive/refs/heads/main.zip
+        method: PUT
+        body_format: raw
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true
+        status_code: 201   
+      ignore_errors: yes  
+
+    - name: wait 30 seconds
+      wait_for:
+        timeout: 30
+         
+# Reinstall the OpenStack Basic VM deployment
+    - name: Create the OpenStack Basic VM deployment environment
+      uri: 
+        url: https://10.255.66.77/api/v3.1/deployments/Openstack-basic-vm-setup?_include=id
+        method: PUT
+        body_format: json
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true
+        body: {"blueprint_id": "OpenStack-Basics-VM-Setup"}
+        status_code: 201   
+      ignore_errors: yes 
+    - name: wait 10 seconds
+      wait_for:
+        timeout: 10      
+    - name: Install Openstack Basic VM from deployment environment 
+      uri: 
+        url: https://10.255.66.77/api/v3.1/executions?_include=id
+        method: POST
+        body_format: json
+        user: labuser
+        password: Labpass01!
+        headers:
+          Tenant: PROD
+        validate_certs: no
+        force_basic_auth: true
+        body: {"deployment_id": "Openstack-basic-vm-setup", "workflow_id": "install"}
+        status_code: 201   
+      ignore_errors: yes  
