@@ -4,6 +4,7 @@
 # This playbook assunmes that there is only one instance of the nginx-eaas service deployed
 - name: Tasks to uninstall deployments
   hosts: localhost
+  connection: local
 
 # Define a list of the sub-deployments which this playbook must not try to remove
   vars:
