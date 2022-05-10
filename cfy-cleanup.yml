@@ -30,7 +30,7 @@
       register: result
 
     - set_fact:
-        id_list: "{{ (result.json['items'] | map(attribute='id')) }}"
+        id_list: "{{ (result.json['items'] | map(attribute='id')) | list }}"
     - debug: msg="{{ id_list }}"      
 
     - set_fact:
